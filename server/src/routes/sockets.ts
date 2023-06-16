@@ -69,9 +69,9 @@ export async function socketsRoutes(app: FastifyInstance) {
           }
         }
       })
+
       // Validações e execuções ao fechar as conexões
       connection.socket.on('close', async () => {
-        console.log('Connection closed')
         // Valida a sala
         const roomSet = roomConnections.get(roomId)
         if (roomSet) {
@@ -90,6 +90,8 @@ export async function socketsRoutes(app: FastifyInstance) {
                 roomSet.delete(socket)
                 return
               }
+              // é feita a deleção do usuário atual da lista de sockets pois a sua conexão foi encerrada
+              roomSet.delete(socket)
               // Verifica-se se o usuário o host, pois se for, é necessário fechar a sala e encerrar todas conexões
               const isHost = await prisma.room.count({
                 where: {
@@ -97,9 +99,6 @@ export async function socketsRoutes(app: FastifyInstance) {
                   hostId: userId,
                 },
               })
-              // é feita a deleção do usuário atual da lista de sockets pois a sua conexão foi encerrada
-
-              roomSet.delete(socket)
 
               // Caso seja o host, é feito o delete da sala, o delete do usuário e a limpagem de conexões e usuário existentes
               if (isHost) {
@@ -124,13 +123,6 @@ export async function socketsRoutes(app: FastifyInstance) {
                 // Por fim como o host encerrou, a sala foi encerrada, então é retirada da lista de sockets
                 roomConnections.delete(roomId)
               } else {
-                // Caso o usuário não seja o host, o mesmo já foi deletado da lista de sockets e agora seu usuário é deletado
-
-                await prisma.user.delete({
-                  where: {
-                    id: userId,
-                  },
-                })
                 // A sala é atualizada, indicando que o antigo usuário, saiu da sala
                 await prisma.room.update({
                   where: {
@@ -147,6 +139,13 @@ export async function socketsRoutes(app: FastifyInstance) {
                     players: true,
                   },
                 })
+                // Caso o usuário não seja o host, o mesmo já foi deletado da lista de sockets e agora seu usuário é deletado
+                await prisma.user.delete({
+                  where: {
+                    id: userId,
+                  },
+                })
+
                 // Por fim para Cada usuário na sala é enviada uma mensagem indicando que o usuário saiu
                 roomSet.forEach(async (socket) => {
                   const message = {
