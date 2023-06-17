@@ -5,8 +5,7 @@ const messages = [
     type: 'message',
     id: 3,
     userId: 1,
-    content:
-      'Lorem ipsum dolor sit, amet consectetur adipisicing elit. Sapiente quidem incidunt quibusdam esse eum officiis, possimus  nulla sit quas quis ipsa aspernatur.Optio modi assumenda  corrupti nesciunt ducimus! Aliquid, voluptate.',
+    content: 'Mensagem do usuário',
   },
   {
     for: 'chat',
@@ -50,23 +49,26 @@ export function Chat() {
         {messages.map((message) => {
           return (
             <>
-              {message.type === 'text' && message.userId !== userId ? (
-                <div key={message.id} className="flex items-end">
-                  <div className="order-2 mx-2 flex max-w-xs flex-col items-start space-y-2 text-xs">
-                    <span className="inline-block rounded-lg rounded-bl-none bg-gray-300 px-4 py-2 text-gray-900">
-                      {message.content}
-                    </span>
+              {message.type === 'message' ? (
+                message.userId !== userId ? (
+                  <div key={message.id} className="flex items-end">
+                    <div className="order-2 mx-2 flex max-w-xs flex-col items-start space-y-2 text-xs">
+                      <span className="inline-block rounded-lg rounded-bl-none bg-gray-300 px-4 py-2 text-gray-900">
+                        {message.content}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div key={message.id} className="flex items-end justify-end">
-                  <div className="order-1 mx-2 flex max-w-xs flex-col items-end space-y-2 text-xs">
-                    <span className="inline-block rounded-lg rounded-br-none bg-blue-600 px-4 py-2 text-white ">
-                      {message.content}
-                    </span>
+                ) : (
+                  <div key={message.id} className="flex items-end justify-end">
+                    <div className="order-1 mx-2 flex max-w-xs flex-col items-end space-y-2 text-xs">
+                      <span className="inline-block rounded-lg rounded-br-none bg-blue-600 px-4 py-2 text-white ">
+                        {message.content}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              ) : null}
+
               {message.type === 'exit' && (
                 <div
                   key={message.id}
