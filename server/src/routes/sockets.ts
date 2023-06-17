@@ -14,7 +14,7 @@ export async function socketsRoutes(app: FastifyInstance) {
     { websocket: true },
     async (connection, req: FastifyRequest) => {
       // Recebe o token, que é convertido para o id do usuário, para identifica-lo
-      const token = req.headers.cookie ? req.headers.cookie.split('=')[1] : null
+      const token = req.cookies.token ?? null
       const { sub } = token ? jwt.verify(token, env.JWT_SECRET!) : { sub: null }
       // Verifica se o usuário realmente existe
       const userExist = await prisma.user.count({
