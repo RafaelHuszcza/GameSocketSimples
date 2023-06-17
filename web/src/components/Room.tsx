@@ -10,14 +10,11 @@ export function Room() {
   const handleSendMessage = () => {
     sendWebSocketMessage('Olá do cliente!')
   }
-  const Disco = () => {
-    Disconnect()
-  }
 
   return (
     <div className="flex flex-col gap-10 p-8">
       <button onClick={handleSendMessage}>Enviar mensagem</button>
-      <button onClick={Disco}>Desconectar</button>
+      <button onClick={Disconnect}>Desconectar</button>
       {roomId}
     </div>
   )
