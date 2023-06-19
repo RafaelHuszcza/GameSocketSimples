@@ -138,13 +138,56 @@ export async function socketsRoutes(app: FastifyInstance) {
                   ? 0
                   : currentUserIndex + 1
               const nextUserId = roomSet[nextUserIndex].userId
+              const diceValue = Math.floor(Math.random() * 6) + 1
+              const room = await prisma.room.findFirst({
+                where: {
+                  id: roomId,
+                },
+                include: {
+                  positions: true,
+                },
+              })
+              if (!room) return
+              const currentPlayersPositions = room.positions
+              const newPlayersPositions = currentPlayersPositions.map(
+                (playerPosition) => {
+                  if (
+                    playerPosition.playerId === roomSet[currentUserIndex].userId
+                  ) {
+                    let newX = playerPosition.positionX + diceValue
+                    let newY = playerPosition.positionY
+                    while (newX > 4) {
+                      newY = newY + 1
+                      newX = newX - 5
+                    }
+                    return {
+                      ...playerPosition,
+                      positionX: newX,
+                      positionY: newY,
+                    }
+                  }
+                  return playerPosition
+                },
+              )
+              // Atualiza o DB
+              for (const playerPosition of newPlayersPositions) {
+                const { playerId, positionX, positionY } = playerPosition
+                await prisma.positionPlayer.update({
+                  where: { playerId },
+                  data: {
+                    positionX,
+                    positionY,
+                  },
+                })
+              }
+              // Envia mensagem para todos os jogadores
               roomSet.forEach(async (socket) => {
                 if (socket.userId === message.userId) {
                   socket.connection.send(
                     JSON.stringify({
                       for: 'game',
                       type: 'roll_dice',
-                      diceValue: Math.floor(Math.random() * 6) + 1,
+                      diceValue,
                     }),
                   )
                 }
@@ -153,6 +196,7 @@ export async function socketsRoutes(app: FastifyInstance) {
                     for: 'game',
                     type: 'end_turn',
                     userIdCurrentTurn: nextUserId,
+                    newPlayersPositions,
                   }),
                 )
               })
