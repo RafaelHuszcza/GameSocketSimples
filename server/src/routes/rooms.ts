@@ -13,7 +13,6 @@ export async function roomsRoutes(app: FastifyInstance) {
     })
 
     const { username } = bodySchema.parse(request.body)
-
     const user = await prisma.user.create({
       data: {
         name: username,
@@ -44,7 +43,7 @@ export async function roomsRoutes(app: FastifyInstance) {
       httpOnly: false,
       secure: false,
     })
-    reply.send({ roomId: room.id })
+    reply.code(201).send({ roomId: room.id, userId: user.id })
   })
 
   app.post(
@@ -54,7 +53,7 @@ export async function roomsRoutes(app: FastifyInstance) {
         username: z.string(),
       })
       const { roomId } = request.params
-
+      console.log(`joining room: ${roomId}`)
       const room = await prisma.room.findUnique({
         where: {
           id: roomId,
@@ -64,15 +63,24 @@ export async function roomsRoutes(app: FastifyInstance) {
         },
       })
       if (!room) {
+        console.log('room not found')
         reply.status(404).send({ message: 'Sala não encontrada' })
         return
       }
       if (room.players.length === 3) {
-        reply.status(404).send({ message: 'Sala Cheia' })
+        console.log('room full')
+        reply.status(400).send({ message: 'Sala Cheia' })
+        return
+      }
+      // TODO: não funcionou
+      if (room.gameStarted) {
+        console.log('game already started')
+        reply.status(400).send({ message: 'Jogo já iniciado' })
         return
       }
 
       const { username } = bodySchema.parse(request.body)
+      console.log(`user joining: ${username}`)
 
       const user = await prisma.user.create({
         data: {
@@ -108,7 +116,8 @@ export async function roomsRoutes(app: FastifyInstance) {
         httpOnly: false,
         secure: false,
       })
-      reply.send({ roomId: room.id })
+      console.log(room.id)
+      reply.code(200).send({ roomId: room.id, userId: user.id })
     },
   )
 }
