@@ -81,7 +81,7 @@ export async function socketsRoutes(app: FastifyInstance) {
 
       // Quando uma nova mensagem é recebida do frontend
       connection.socket.on('message', (data) => {
-        // Transforma a informação em json (( Ainda falta aqui))
+        // Transforma a informação em json
         const message = JSON.parse(data)
         console.log('received message: ', message)
         // Envia a mensagem para todas as conexões ativas da sala
@@ -123,6 +123,14 @@ export async function socketsRoutes(app: FastifyInstance) {
                 },
               })
             } else if (message.type === 'roll_dice') {
+              const currentUserIndex = roomSet.findIndex(
+                (socket) => socket.userId === message.userId,
+              )
+              const nextUserIndex =
+                currentUserIndex + 1 >= roomSet.length
+                  ? 0
+                  : currentUserIndex + 1
+              const nextUserId = roomSet[nextUserIndex].userId
               roomSet.forEach(async (socket) => {
                 if (socket.userId === message.userId) {
                   socket.connection.send(
@@ -133,6 +141,13 @@ export async function socketsRoutes(app: FastifyInstance) {
                     }),
                   )
                 }
+                socket.connection.send(
+                  JSON.stringify({
+                    for: 'game',
+                    type: 'end_turn',
+                    userIdCurrentTurn: nextUserId,
+                  }),
+                )
               })
             }
           }
