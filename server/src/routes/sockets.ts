@@ -51,7 +51,7 @@ export async function socketsRoutes(app: FastifyInstance) {
         return
       }
       // Verifica o limite máximo da sala, se já existirem 3 jogadores, fecha a conexão
-      if (room.players.length >= 3) {
+      if (room.players.length > 3) {
         connection.socket.close(
           1000,
           'Conexão encerrada pelo servidor. Sala cheia',
@@ -59,6 +59,7 @@ export async function socketsRoutes(app: FastifyInstance) {
       }
       // Adiciona a conexão atual ao conjunto de conexões ativas da sala
       if (!roomConnections.has(roomId)) {
+        console.log('Nova sala criada na lista de sockets')
         roomConnections.set(roomId, [])
       }
 
@@ -66,6 +67,7 @@ export async function socketsRoutes(app: FastifyInstance) {
       const roomSet = roomConnections.get(roomId)
       if (roomSet) {
         roomSet.push({ connection: connection.socket, userId: sub })
+        console.log(`Novo conexão adicionada a sala ${roomId}`)
         // Envia mensagem que o usuário entrou na sala
         roomSet.forEach(async (socket) => {
           const message = {
@@ -77,26 +79,33 @@ export async function socketsRoutes(app: FastifyInstance) {
           }
           socket.connection.send(JSON.stringify(message))
         })
+        console.log(`Chat de Entrada Enviado`)
       }
 
       // Quando uma nova mensagem é recebida do frontend
       connection.socket.on('message', async (data) => {
         // Transforma a informação em json
         const message = JSON.parse(data)
-        console.log('received message: ', message)
+        console.log('Mensagem Recebida: ', message)
         // Envia a mensagem para todas as conexões ativas da sala
         if (message.for === 'chat') {
           const roomSet = roomConnections.get(roomId)
           if (roomSet) {
+            const username = await prisma.user.findFirstOrThrow({
+              where: {
+                id: message.userId,
+              },
+            })
             roomSet.forEach(async (socket) => {
-              socket.connection.send(
-                JSON.stringify({
-                  id: randomUUID().toString(),
-                  ...message,
-                }),
-              )
+              const newMessage = JSON.stringify({
+                id: randomUUID().toString(),
+                username: username.name,
+                ...message,
+              })
+              socket.connection.send(newMessage)
             })
           }
+          console.log(`Nova mensagem de chat recebida e direcionada`)
         } else if (message.for === 'game') {
           const roomSet = roomConnections.get(roomId)
           if (roomSet) {
@@ -222,10 +231,12 @@ export async function socketsRoutes(app: FastifyInstance) {
               })
               // Caso não haja usuário, é deletado da lista de conexões esse socket, e retorna, pois não há mais nada a fazer
               if (userExist === 0) {
+                console.log('Fechamento de Seção com Usuário inexistente!')
                 roomSet.splice(roomSet.indexOf(socket), 1)
                 return
               }
               // é feita a deleção do usuário atual da lista de sockets pois a sua conexão foi encerrada
+              console.log('Retirada de usuário da lista de sockets')
               roomSet.splice(roomSet.indexOf(socket), 1)
 
               // Verifica-se se o usuário o host, pois se for, é necessário fechar a sala e encerrar todas conexões
@@ -237,58 +248,70 @@ export async function socketsRoutes(app: FastifyInstance) {
               })
 
               // Caso seja o host, é feito o delete da sala, o delete do usuário e a limpagem de conexões e usuário existentes
-              // if (isHost) {
-              //   await prisma.room.delete({
-              //     where: {
-              //       id: roomId,
-              //     },
-              //   })
-              //   roomSet.forEach(async (socket) => {
-              //     socket.connection.close()
-              //     await prisma.user.delete({
-              //       where: {
-              //         id: socket.userId,
-              //       },
-              //     })
-              //   })
-              //   // Por fim como o host encerrou, a sala foi encerrada, então é retirada da lista de sockets
-              //   roomConnections.delete(roomId)
-              // } else {
-              //   // A sala é atualizada, indicando que o antigo usuário, saiu da sala
-              //   await prisma.room.update({
-              //     where: {
-              //       id: roomId,
-              //     },
-              //     data: {
-              //       players: {
-              //         disconnect: {
-              //           id: userId,
-              //         },
-              //       },
-              //     },
-              //     include: {
-              //       players: true,
-              //     },
-              //   })
-              //   // Caso o usuário não seja o host, o mesmo já foi deletado da lista de sockets e agora seu usuário é deletado
-              //   await prisma.user.delete({
-              //     where: {
-              //       id: userId,
-              //     },
-              //   })
+              if (isHost) {
+                console.log('Usuário é o host')
+                await prisma.room.delete({
+                  where: {
+                    id: roomId,
+                  },
+                })
+                await prisma.user.delete({
+                  where: {
+                    id: userId,
+                  },
+                })
+                roomSet.forEach(async (socket) => {
+                  socket.connection.close()
+                  await prisma.user.delete({
+                    where: {
+                      id: socket.userId,
+                    },
+                  })
+                })
 
-              //   // Por fim para Cada usuário na sala é enviada uma mensagem indicando que o usuário saiu
-              //   roomSet.forEach(async (socket) => {
-              //     const message = {
-              //       id: randomUUID().toString(),
-              //       for: 'chat',
-              //       type: 'exit',
-              //       userId,
-              //       content: `User has left the room.`,
-              //     }
-              //     socket.connection.send(JSON.stringify(message))
-              //   })
-              // }
+                console.log('Demais conexões encerradas e usuários deletados')
+                // Por fim como o host encerrou, a sala foi encerrada, então é retirada da lista de sockets
+                roomConnections.delete(roomId)
+                console.log('Sala retirada de sockets')
+              } else {
+                // A sala é atualizada, indicando que o antigo usuário, saiu da sala
+                await prisma.room.update({
+                  where: {
+                    id: roomId,
+                  },
+                  data: {
+                    players: {
+                      disconnect: {
+                        id: userId,
+                      },
+                    },
+                  },
+                  include: {
+                    players: true,
+                  },
+                })
+                console.log('usuário retirado da sala do banco')
+                // Caso o usuário não seja o host, o mesmo já foi deletado da lista de sockets e agora seu usuário é deletado
+                await prisma.user.delete({
+                  where: {
+                    id: userId,
+                  },
+                })
+                console.log('Usuário Deletado')
+
+                // Por fim para Cada usuário na sala é enviada uma mensagem indicando que o usuário saiu
+                roomSet.forEach(async (socket) => {
+                  const message = {
+                    id: randomUUID().toString(),
+                    for: 'chat',
+                    type: 'exit',
+                    userId,
+                    content: `User has left the room.`,
+                  }
+                  socket.connection.send(JSON.stringify(message))
+                })
+                console.log('Mensagem de saída Enviada')
+              }
             }
           })
         }

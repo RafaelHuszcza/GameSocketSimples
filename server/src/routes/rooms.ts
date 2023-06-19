@@ -18,6 +18,7 @@ export async function roomsRoutes(app: FastifyInstance) {
         name: username,
       },
     })
+    console.log(`usuário ${username} criado`)
 
     const token = app.jwt.sign(
       {
@@ -28,6 +29,7 @@ export async function roomsRoutes(app: FastifyInstance) {
         expiresIn: '30 days',
       },
     )
+
     const room = await prisma.room.create({
       data: {
         players: {
@@ -36,6 +38,7 @@ export async function roomsRoutes(app: FastifyInstance) {
         hostId: user.id,
       },
     })
+    console.log(`sala ${room.id} criada`)
 
     reply.setCookie('token', token, {
       path: '/',
@@ -52,8 +55,12 @@ export async function roomsRoutes(app: FastifyInstance) {
       const bodySchema = z.object({
         username: z.string(),
       })
+      const { username } = bodySchema.parse(request.body)
+
       const { roomId } = request.params
-      console.log(`joining room: ${roomId}`)
+      console.log(
+        `Iniciando entrada do usuário ${username}  na sala room: ${roomId}`,
+      )
       const room = await prisma.room.findUnique({
         where: {
           id: roomId,
@@ -63,30 +70,27 @@ export async function roomsRoutes(app: FastifyInstance) {
         },
       })
       if (!room) {
-        console.log('room not found')
+        console.log('Sala não encontrada')
         reply.status(404).send({ message: 'Sala não encontrada' })
         return
       }
       if (room.players.length === 3) {
-        console.log('room full')
+        console.log('Sala Cheia')
         reply.status(400).send({ message: 'Sala Cheia' })
         return
       }
-      // TODO: não funcionou
       if (room.gameStarted) {
-        console.log('game already started')
+        console.log('Jogo já iniciado')
         reply.status(400).send({ message: 'Jogo já iniciado' })
         return
       }
-
-      const { username } = bodySchema.parse(request.body)
-      console.log(`user joining: ${username}`)
 
       const user = await prisma.user.create({
         data: {
           name: username,
         },
       })
+      console.log(`Usuário ${username} criado`)
 
       const token = app.jwt.sign(
         {
@@ -110,13 +114,13 @@ export async function roomsRoutes(app: FastifyInstance) {
           },
         },
       })
+      console.log(`Usuário ${username} adicionado a sala ${roomId}`)
       reply.setCookie('token', token, {
         path: '/',
         maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
         httpOnly: false,
         secure: false,
       })
-      console.log(room.id)
       reply.code(200).send({ roomId: room.id, userId: user.id })
     },
   )
