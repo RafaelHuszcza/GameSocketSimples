@@ -80,7 +80,7 @@ export async function socketsRoutes(app: FastifyInstance) {
       }
 
       // Quando uma nova mensagem é recebida do frontend
-      connection.socket.on('message', (data) => {
+      connection.socket.on('message', async (data) => {
         // Transforma a informação em json
         const message = JSON.parse(data)
         console.log('received message: ', message)
@@ -103,6 +103,22 @@ export async function socketsRoutes(app: FastifyInstance) {
             if (message.type === 'start_game') {
               const choosenPlayer =
                 roomSet[Math.floor(Math.random() * roomSet.length)].userId
+              await prisma.room.update({
+                where: {
+                  id: roomId,
+                },
+                data: {
+                  gameStarted: true,
+                  currentTurnPlayerId: choosenPlayer,
+                  positions: {
+                    create: roomSet.map((socket) => ({
+                      playerId: socket.userId,
+                      positionX: 0,
+                      positionY: 0,
+                    })),
+                  },
+                },
+              })
               roomSet.forEach(async (socket) => {
                 socket.connection.send(
                   JSON.stringify({
@@ -112,15 +128,6 @@ export async function socketsRoutes(app: FastifyInstance) {
                     playersIds: [...roomSet.map((socket) => socket.userId)],
                   }),
                 )
-              })
-              // nao funcionou
-              prisma.room.update({
-                where: {
-                  id: roomId,
-                },
-                data: {
-                  gameStarted: true,
-                },
               })
             } else if (message.type === 'roll_dice') {
               const currentUserIndex = roomSet.findIndex(

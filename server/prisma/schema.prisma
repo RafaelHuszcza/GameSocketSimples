@@ -14,9 +14,18 @@ model User {
 }
 
 model Room {
-  id                  String  @id @default(uuid())
+  id                  String           @id @default(uuid())
   hostId              String
-  players             User[]  @relation("players")
-  currentTurnPlayerId String  @default("")
-  gameStarted         Boolean @default(false)
+  players             User[]           @relation("players")
+  currentTurnPlayerId String           @default("")
+  gameStarted         Boolean          @default(false)
+  positions           PositionPlayer[]
+}
+
+model PositionPlayer {
+  playerId  String  @id @unique
+  positionX Int
+  positionY Int
+  Room      Room?   @relation(fields: [roomId], references: [id])
+  roomId    String?
 }
