@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma'
 import jwt from 'jsonwebtoken'
 import { env } from 'process'
 import { randomUUID } from 'crypto'
+import { getNewXY } from '../utils/GameBoard'
 
 // Registro de Conexões por salas
 const roomConnections: Map<string, Array<any>> = new Map()
@@ -163,16 +164,15 @@ export async function socketsRoutes(app: FastifyInstance) {
                   if (
                     playerPosition.playerId === roomSet[currentUserIndex].userId
                   ) {
-                    let newX = playerPosition.positionX + diceValue
-                    let newY = playerPosition.positionY
-                    while (newX > 4) {
-                      newY = newY + 1
-                      newX = newX - 5
-                    }
+                    const { outX, outY } = getNewXY(
+                      playerPosition.positionX,
+                      playerPosition.positionY,
+                      diceValue,
+                    )
                     return {
                       ...playerPosition,
-                      positionX: newX,
-                      positionY: newY,
+                      positionX: outX,
+                      positionY: outY,
                     }
                   }
                   return playerPosition
