@@ -250,9 +250,17 @@ export async function socketsRoutes(app: FastifyInstance) {
               // Caso seja o host, é feito o delete da sala, o delete do usuário e a limpagem de conexões e usuário existentes
               if (isHost) {
                 console.log('Usuário é o host')
+                await prisma.positionPlayer.deleteMany({
+                  where: {
+                    roomId,
+                  },
+                })
                 await prisma.room.delete({
                   where: {
                     id: roomId,
+                  },
+                  include: {
+                    positions: true,
                   },
                 })
                 await prisma.user.delete({
@@ -260,6 +268,7 @@ export async function socketsRoutes(app: FastifyInstance) {
                     id: userId,
                   },
                 })
+
                 roomSet.forEach(async (socket) => {
                   socket.connection.close()
                   await prisma.user.delete({

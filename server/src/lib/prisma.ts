@@ -1,5 +1,3 @@
 import { PrismaClient } from '@prisma/client'
-
-export const prisma = new PrismaClient({
-  // log: ['query'],
-})
+// Criação do prisma client, necessário pra utilização do ORM
+export const prisma = new PrismaClient({})

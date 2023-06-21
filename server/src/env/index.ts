@@ -1,12 +1,14 @@
 import { config } from 'dotenv'
 import { z } from 'zod'
 
+// Validação das variáveis ambiente
 if (process.env.NODE_ENV === 'test') {
   config({ path: '.env.test' })
 } else {
   config()
 }
 
+// Uso da biblioteca Zod,que valida os dados
 const envSchema = z.object({
   NODE_ENV: z.enum(['dev', 'test', 'prod']).default('prod'),
   JWT_SECRET: z.string(),
