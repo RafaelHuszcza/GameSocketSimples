@@ -51,6 +51,7 @@ export async function roomsRoutes(app: FastifyInstance) {
       httpOnly: true,
       secure: false,
     })
+
     // Enviando a resposta com os id's criados
     console.log('response enviada')
     reply.code(201).send({ roomId: room.id, userId: user.id })

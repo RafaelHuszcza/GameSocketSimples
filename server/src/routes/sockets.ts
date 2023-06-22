@@ -52,6 +52,7 @@ export async function socketsRoutes(app: FastifyInstance) {
       }
       // Verifica o limite máximo da sala, se já existirem 3 jogadores, fecha a conexão
       if (room.players.length > 3) {
+        console.log(room.players.length)
         connection.socket.close(
           1000,
           'Conexão encerrada pelo servidor. Sala cheia',
@@ -168,7 +169,7 @@ export async function socketsRoutes(app: FastifyInstance) {
                   (socket) => socket.userId === message.userId,
                 )
 
-                // Aqui qeu tem que mexer da dar final game, acredito eu
+                // TODO Aqui qeu tem que mexer da dar final game, acredito eu
                 //
                 //
                 //
@@ -306,11 +307,18 @@ export async function socketsRoutes(app: FastifyInstance) {
                     },
                   },
                 })
-                await prisma.positionPlayer.delete({
+                const hasPosition = await prisma.positionPlayer.findFirst({
                   where: {
                     playerId: userId,
                   },
                 })
+                if (hasPosition) {
+                  await prisma.positionPlayer.delete({
+                    where: {
+                      playerId: userId,
+                    },
+                  })
+                }
 
                 // Para cada usuário na sala é enviada uma mensagem indicando que o usuário saiu
                 roomSet.forEach((socket) => {
@@ -319,11 +327,11 @@ export async function socketsRoutes(app: FastifyInstance) {
                     for: 'chat',
                     type: 'exit',
                     userId,
-                    content: `User has left the room.`,
+                    content: `has left the room.`,
                   }
                   socket.connection.send(JSON.stringify(message))
                 })
-                console.log(roomStats)
+
                 if (
                   roomStats &&
                   roomStats.gameStarted === true &&
@@ -345,7 +353,7 @@ export async function socketsRoutes(app: FastifyInstance) {
                       : currentUserIndex + 1
                   const nextUserId = roomSet[nextUserIndex].userId
 
-                  // Atualiza a sala indicando o novo player
+                  // Atualiza a sala indicando a saída do player
                   if (roomPositions) {
                     const newPlayersPositions = roomPositions.positions
                     await prisma.room.update({
