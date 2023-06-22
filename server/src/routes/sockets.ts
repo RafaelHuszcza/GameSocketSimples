@@ -33,8 +33,7 @@ export async function socketsRoutes(app: FastifyInstance) {
       }
       // Recebe o roomId através de parâmetros
       const roomId = req?.params?.roomId
-
-      // check if room exists using prisma
+      // Verifica se a sala existe no prisma
       const room = await prisma.room.findUnique({
         where: {
           id: roomId,
@@ -53,6 +52,7 @@ export async function socketsRoutes(app: FastifyInstance) {
       }
       // Verifica o limite máximo da sala, se já existirem 3 jogadores, fecha a conexão
       if (room.players.length > 3) {
+        console.log(room.players.length)
         connection.socket.close(
           1000,
           'Conexão encerrada pelo servidor. Sala cheia',
@@ -60,17 +60,14 @@ export async function socketsRoutes(app: FastifyInstance) {
       }
       // Adiciona a conexão atual ao conjunto de conexões ativas da sala
       if (!roomConnections.has(roomId)) {
-        console.log('Nova sala criada na lista de sockets')
         roomConnections.set(roomId, [])
       }
-
       // Adiciona a conexão, na lista de conexões por sala
       const roomSet = roomConnections.get(roomId)
       if (roomSet) {
         roomSet.push({ connection: connection.socket, userId: sub })
-        console.log(`Novo conexão adicionada a sala ${roomId}`)
-        // Envia mensagem que o usuário entrou na sala
-        roomSet.forEach(async (socket) => {
+        // Envia mensagem que o usuário entrou na sala para todos pertencentes a sala
+        roomSet.forEach((socket) => {
           const message = {
             id: randomUUID().toString(),
             for: 'chat',
@@ -80,24 +77,26 @@ export async function socketsRoutes(app: FastifyInstance) {
           }
           socket.connection.send(JSON.stringify(message))
         })
-        console.log(`Chat de Entrada Enviado`)
       }
 
       // Quando uma nova mensagem é recebida do frontend
       connection.socket.on('message', async (data) => {
         // Transforma a informação em json
         const message = JSON.parse(data)
-        console.log('Mensagem Recebida: ', message)
-        // Envia a mensagem para todas as conexões ativas da sala
+
+        // Verifica se é chat ou jogo
         if (message.for === 'chat') {
+          // Chat reenvia a mensagem para todas as conexões ativas da sala
           const roomSet = roomConnections.get(roomId)
           if (roomSet) {
+            // Procura o nome do usuário para usar no chat
             const username = await prisma.user.findFirstOrThrow({
               where: {
                 id: message.userId,
               },
             })
-            roomSet.forEach(async (socket) => {
+            // Envia a mensagem para todos
+            roomSet.forEach((socket) => {
               const newMessage = JSON.stringify({
                 id: randomUUID().toString(),
                 username: username.name,
@@ -106,20 +105,22 @@ export async function socketsRoutes(app: FastifyInstance) {
               socket.connection.send(newMessage)
             })
           }
-          console.log(`Nova mensagem de chat recebida e direcionada`)
         } else if (message.for === 'game') {
           const roomSet = roomConnections.get(roomId)
           if (roomSet) {
+            // Verificações de type de mensagem
             if (message.type === 'start_game') {
-              const choosenPlayer =
+              // Seleciona aleatoriamente um jogador para começar o jogo
+              const chosenPlayer =
                 roomSet[Math.floor(Math.random() * roomSet.length)].userId
+              // Atualiza a sala indicando que inicio o jogo, qual o jogador inicial e as posições deles
               await prisma.room.update({
                 where: {
                   id: roomId,
                 },
                 data: {
                   gameStarted: true,
-                  currentTurnPlayerId: choosenPlayer,
+                  currentTurnPlayerId: chosenPlayer,
                   positions: {
                     create: roomSet.map((socket) => ({
                       playerId: socket.userId,
@@ -129,86 +130,130 @@ export async function socketsRoutes(app: FastifyInstance) {
                   },
                 },
               })
-              roomSet.forEach(async (socket) => {
+              // Envia mensagem para todos informando o jogador a rolar o dado e a lista de jogadores
+              roomSet.forEach((socket) => {
                 socket.connection.send(
                   JSON.stringify({
                     for: 'game',
                     type: 'start_game',
-                    userIdCurrentTurn: choosenPlayer,
+                    userIdCurrentTurn: chosenPlayer,
                     playersIds: [...roomSet.map((socket) => socket.userId)],
                   }),
                 )
               })
             } else if (message.type === 'roll_dice') {
-              const currentUserIndex = roomSet.findIndex(
-                (socket) => socket.userId === message.userId,
-              )
-              const nextUserIndex =
-                currentUserIndex + 1 >= roomSet.length
-                  ? 0
-                  : currentUserIndex + 1
-              const nextUserId = roomSet[nextUserIndex].userId
-              const diceValue = Math.floor(Math.random() * 6) + 1
-              const room = await prisma.room.findFirst({
+              const roomTurn = await prisma.room.findUnique({
                 where: {
                   id: roomId,
                 },
-                include: {
-                  positions: true,
-                },
               })
-              if (!room) return
-              const currentPlayersPositions = room.positions
-              const newPlayersPositions = currentPlayersPositions.map(
-                (playerPosition) => {
-                  if (
-                    playerPosition.playerId === roomSet[currentUserIndex].userId
-                  ) {
-                    const { outX, outY } = getNewXY(
-                      playerPosition.positionX,
-                      playerPosition.positionY,
-                      diceValue,
-                    )
-                    return {
-                      ...playerPosition,
-                      positionX: outX,
-                      positionY: outY,
-                    }
-                  }
-                  return playerPosition
-                },
-              )
-              // Atualiza o DB
-              for (const playerPosition of newPlayersPositions) {
-                const { playerId, positionX, positionY } = playerPosition
-                await prisma.positionPlayer.update({
-                  where: { playerId },
-                  data: {
-                    positionX,
-                    positionY,
+
+              // Verifica se o jogador tem a permissão de rodar o dado
+              if (roomTurn?.currentTurnPlayerId === message.userId) {
+                // Calcula o valor que foi tirado no dado
+                const diceValue = Math.floor(Math.random() * 6) + 1
+                // Pega as posições anteriores para que possa atualizar
+                const roomPositions = await prisma.room.findFirst({
+                  where: {
+                    id: roomId,
+                  },
+                  include: {
+                    positions: true,
                   },
                 })
-              }
-              // Envia mensagem para todos os jogadores
-              roomSet.forEach(async (socket) => {
-                if (socket.userId === message.userId) {
+                // Se não tiver, deu algum erro, retorna
+                if (!roomPositions) return
+
+                // encontra o index do usuário no array de usuários da sala
+                const currentUserIndex = roomSet.findIndex(
+                  (socket) => socket.userId === message.userId,
+                )
+
+                // TODO Aqui qeu tem que mexer da dar final game, acredito eu
+                //
+                //
+                //
+                //
+                //
+                //
+                //
+                //
+                //
+                //
+                // calcula as nova posições, baseado no valor da dado
+                const newPlayersPositions = roomPositions.positions.map(
+                  (playerPosition) => {
+                    if (
+                      playerPosition.playerId ===
+                      roomSet[currentUserIndex].userId
+                    ) {
+                      const { outX, outY } = getNewXY(
+                        playerPosition.positionX,
+                        playerPosition.positionY,
+                        diceValue,
+                      )
+                      return {
+                        ...playerPosition,
+                        positionX: outX,
+                        positionY: outY,
+                      }
+                    }
+                    return playerPosition
+                  },
+                )
+                // Atualiza o DB com as novas posições
+                for (const playerPosition of newPlayersPositions) {
+                  const { playerId, positionX, positionY } = playerPosition
+                  await prisma.positionPlayer.update({
+                    where: { playerId },
+                    data: {
+                      positionX,
+                      positionY,
+                    },
+                  })
+                }
+
+                // calcula o novo jogador do dado
+                const nextUserIndex =
+                  currentUserIndex + 1 >= roomSet.length
+                    ? 0
+                    : currentUserIndex + 1
+
+                const nextUserId = roomSet[nextUserIndex].userId
+                // Atualiza a sala com o novo jogador do dado
+                await prisma.room.update({
+                  where: {
+                    id: roomId,
+                  },
+                  data: {
+                    currentTurnPlayerId: nextUserId,
+                  },
+                })
+
+                // Envia o valor do dado para todos os jogadores  e indica que o turno acabou
+                // retornando as novas posições e o novo jogador a jogar
+                roomSet.forEach((socket) => {
+                  if (socket.userId === message.userId) {
+                    socket.connection.send(
+                      JSON.stringify({
+                        for: 'game',
+                        type: 'roll_dice',
+                        diceValue,
+                      }),
+                    )
+                  }
                   socket.connection.send(
                     JSON.stringify({
                       for: 'game',
-                      type: 'roll_dice',
-                      diceValue,
+                      type: 'end_turn',
+                      userIdCurrentTurn: nextUserId,
+                      newPlayersPositions,
                     }),
                   )
-                }
-                socket.connection.send(
-                  JSON.stringify({
-                    for: 'game',
-                    type: 'end_turn',
-                    userIdCurrentTurn: nextUserId,
-                    newPlayersPositions,
-                  }),
-                )
-              })
+                })
+              } else {
+                // só retorna se não for a vez do usuário
+              }
             }
           }
         }
@@ -220,62 +265,37 @@ export async function socketsRoutes(app: FastifyInstance) {
         const roomSet = roomConnections.get(roomId)
         if (roomSet) {
           // É preciso verificar todos os sockets do roomSet
-          roomSet.forEach(async (socket) => {
+          for (const socket of roomSet) {
             // Encontrado o Socket desconectado verificamos seu ID de usuário e se o usuário existe realmente
             if (socket.connection === connection.socket) {
               const userId = socket.userId
-              const userExist = await prisma.user.count({
+              // É feita a retirada do usuário atual da lista de sockets e do banco
+              roomSet.splice(roomSet.indexOf(socket), 1)
+              await prisma.user.delete({
                 where: {
                   id: userId,
                 },
               })
-              // Caso não haja usuário, é deletado da lista de conexões esse socket, e retorna, pois não há mais nada a fazer
-              if (userExist === 0) {
-                console.log('Fechamento de Seção com Usuário inexistente!')
-                roomSet.splice(roomSet.indexOf(socket), 1)
-                return
-              }
-              // é feita a deleção do usuário atual da lista de sockets pois a sua conexão foi encerrada
-              console.log('Retirada de usuário da lista de sockets')
-              roomSet.splice(roomSet.indexOf(socket), 1)
-
-              // Verifica-se se o usuário o host, pois se for, é necessário fechar a sala e encerrar todas conexões
-              const isHost = await prisma.room.count({
+              // Verifica-se se o usuário era o host
+              const Host = await prisma.room.findFirst({
                 where: {
                   id: roomId,
                   hostId: userId,
                 },
               })
-
-              // Caso seja o host, é feito o delete da sala, o delete do usuário e a limpagem de conexões e usuário existentes
-              if (isHost) {
-                console.log('Usuário é o host')
-                await prisma.room.delete({
+              // Caso seja o host, a sala termina, finalizando todas as conexões
+              if (Host) {
+                await prisma.positionPlayer.deleteMany({
                   where: {
-                    id: roomId,
+                    roomId,
                   },
                 })
-                await prisma.user.delete({
-                  where: {
-                    id: userId,
-                  },
-                })
-                roomSet.forEach(async (socket) => {
+                roomSet.forEach((socket) => {
                   socket.connection.close()
-                  await prisma.user.delete({
-                    where: {
-                      id: socket.userId,
-                    },
-                  })
                 })
-
-                console.log('Demais conexões encerradas e usuários deletados')
-                // Por fim como o host encerrou, a sala foi encerrada, então é retirada da lista de sockets
-                roomConnections.delete(roomId)
-                console.log('Sala retirada de sockets')
               } else {
                 // A sala é atualizada, indicando que o antigo usuário, saiu da sala
-                await prisma.room.update({
+                const roomStats = await prisma.room.update({
                   where: {
                     id: roomId,
                   },
@@ -286,34 +306,89 @@ export async function socketsRoutes(app: FastifyInstance) {
                       },
                     },
                   },
-                  include: {
-                    players: true,
-                  },
                 })
-                console.log('usuário retirado da sala do banco')
-                // Caso o usuário não seja o host, o mesmo já foi deletado da lista de sockets e agora seu usuário é deletado
-                await prisma.user.delete({
+                const hasPosition = await prisma.positionPlayer.findFirst({
                   where: {
-                    id: userId,
+                    playerId: userId,
                   },
                 })
-                console.log('Usuário Deletado')
+                if (hasPosition) {
+                  await prisma.positionPlayer.delete({
+                    where: {
+                      playerId: userId,
+                    },
+                  })
+                }
 
-                // Por fim para Cada usuário na sala é enviada uma mensagem indicando que o usuário saiu
-                roomSet.forEach(async (socket) => {
+                // Para cada usuário na sala é enviada uma mensagem indicando que o usuário saiu
+                roomSet.forEach((socket) => {
                   const message = {
                     id: randomUUID().toString(),
                     for: 'chat',
                     type: 'exit',
                     userId,
-                    content: `User has left the room.`,
+                    content: `has left the room.`,
                   }
                   socket.connection.send(JSON.stringify(message))
                 })
-                console.log('Mensagem de saída Enviada')
+
+                if (
+                  roomStats &&
+                  roomStats.gameStarted === true &&
+                  roomStats.currentTurnPlayerId === userId
+                ) {
+                  const roomPositions = await prisma.room.findUnique({
+                    where: {
+                      id: roomId,
+                    },
+                    include: { positions: true },
+                  })
+                  // Seleciona o novo jogador a jogar o dado
+                  const currentUserIndex = roomSet.findIndex(
+                    (socket) => socket.userId === userId,
+                  )
+                  const nextUserIndex =
+                    currentUserIndex + 1 >= roomSet.length
+                      ? 0
+                      : currentUserIndex + 1
+                  const nextUserId = roomSet[nextUserIndex].userId
+
+                  // Atualiza a sala indicando a saída do player
+                  if (roomPositions) {
+                    const newPlayersPositions = roomPositions.positions
+                    await prisma.room.update({
+                      where: {
+                        id: roomId,
+                      },
+                      data: {
+                        currentTurnPlayerId: nextUserId,
+                      },
+                    })
+                    // Envia mensagem para todos informando o novo jogador a jogar o dado
+                    roomSet.forEach((socket) => {
+                      socket.connection.send(
+                        JSON.stringify({
+                          for: 'game',
+                          type: 'end_turn',
+                          userIdCurrentTurn: nextUserId,
+                          newPlayersPositions,
+                        }),
+                      )
+                    })
+                  }
+                }
               }
             }
-          })
+          }
+          // Caso a sala esteja vazia, é feita o delete da sala da lista de sockets e do banco
+          if (roomSet.length === 0) {
+            roomConnections.delete(roomId)
+            await prisma.room.delete({
+              where: {
+                id: roomId,
+              },
+            })
+          }
         }
       })
     },
