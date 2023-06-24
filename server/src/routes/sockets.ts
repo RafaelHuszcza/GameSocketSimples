@@ -111,8 +111,10 @@ export async function socketsRoutes(app: FastifyInstance) {
             // Verificações de type de mensagem
             if (message.type === 'start_game') {
               // Seleciona aleatoriamente um jogador para começar o jogo
+              console.log('escolhendo um jogador')
               const chosenPlayer =
                 roomSet[Math.floor(Math.random() * roomSet.length)].userId
+              console.log(`jogador ${chosenPlayer} escolhido`)
               // Atualiza a sala indicando que inicio o jogo, qual o jogador inicial e as posições deles
               await prisma.room.update({
                 where: {
@@ -169,18 +171,6 @@ export async function socketsRoutes(app: FastifyInstance) {
                   (socket) => socket.userId === message.userId,
                 )
 
-                // TODO Aqui qeu tem que mexer da dar final game, acredito eu
-                //
-                //
-                //
-                //
-                //
-                //
-                //
-                //
-                //
-                //
-                // calcula as nova posições, baseado no valor da dado
                 const newPlayersPositions = roomPositions.positions.map(
                   (playerPosition) => {
                     if (
@@ -211,6 +201,29 @@ export async function socketsRoutes(app: FastifyInstance) {
                       positionY,
                     },
                   })
+                }
+
+                // verifica se uma das posições é a final, se for, acaba o jogo
+                const finalPosition = newPlayersPositions.find(
+                  (playerPosition) =>
+                    playerPosition.positionX === 4 &&
+                    playerPosition.positionY === 4,
+                )
+                if (finalPosition) {
+                  // Envia mensagem para todos os jogadores que o jogo acabou
+                  console.log(
+                    `Jogo finalizado. Houve um ganhador: ${finalPosition.playerId}`,
+                  )
+                  roomSet.forEach((socket) => {
+                    socket.connection.send(
+                      JSON.stringify({
+                        for: 'game',
+                        type: 'end_game',
+                        winnerId: finalPosition.playerId,
+                      }),
+                    )
+                  })
+                  return
                 }
 
                 // calcula o novo jogador do dado

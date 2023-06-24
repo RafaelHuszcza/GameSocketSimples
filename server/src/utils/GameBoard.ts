@@ -1,8 +1,8 @@
 const boardData = [
   ['INICIO', 'VOLTA_1', 'AVANCA_5', '', 'VOLTA_2'],
-  ['', 'SORTEREVES_5', 'VOLTA_10', '', 'AVANCA_1'],
+  ['', 'SORTEREVES_3', 'VOLTA_10', '', 'AVANCA_1'],
   ['', '', 'SORTEREVES_5', 'AVANCA_1', ''],
-  ['VOLTA_1', 'AVANCA_2', '', 'SORTEREVES_5', 'SORTEREVES_5'],
+  ['VOLTA_1', 'AVANCA_2', '', 'SORTEREVES_2', 'SORTEREVES_1'],
   ['', '', 'AVANCA_1', 'VOLTA_10', 'FIM'],
 ]
 
@@ -31,6 +31,7 @@ function rollDice(x: number, y: number, diceValue: number) {
   let newY = y
   while (newX > 4) {
     newY = newY + 1
+    if (newY > 4) return { newX: 4, newY: 4 }
     newX = newX - 5
   }
   return { newX, newY }
@@ -42,23 +43,29 @@ export function getNewXY(
   diceValue: number,
 ): { outX: number; outY: number } {
   const { newX, newY } = rollDice(x, y, diceValue)
-  const action = boardData[x][y]
+  if (newX === 4 && newY === 4) return { outX: 4, outY: 4 }
+  console.log(
+    `\n-------------------------\n\nPosição atual: ${x} ${y}\nRolagem do dado: ${diceValue}`,
+  )
+  const action = boardData[newY][newX]
   const splittedAction = action.split('_')
   const actionType = splittedAction[0]
   const actionValue = splittedAction[1]
-  console.log(actionType, actionValue)
   console.log(
-    `Posição atual: ${x} ${y} -> Rolagem do dado: ${diceValue}: ${newX} ${newY} -> Ação: ${actionType} ${actionValue}`,
+    `\nNova posição: ${newX} ${newY}\nAção: ${actionType} ${actionValue}\n\n`,
   )
   let resultXY
   switch (actionType) {
     case 'AVANCA':
+      console.log('Avança')
       resultXY = getSum(actionValue, newX, newY)
       break
     case 'VOLTA':
+      console.log('Volta')
       resultXY = getSub(actionValue, newX, newY)
       break
-    case 'SORTE':
+    case 'SORTEREVES':
+      console.log('Sorte ou Revés')
       if (Math.floor(Math.random() * 2) === 1)
         resultXY = getSum(actionValue, newX, newY)
       else resultXY = getSub(actionValue, newX, newY)
@@ -67,6 +74,8 @@ export function getNewXY(
       resultXY = { outX: newX, outY: newY }
       break
   }
-  console.log(`Resultado: ${resultXY.outX} ${resultXY.outY}`)
+  resultXY.outX = resultXY.outX < 0 ? 0 : resultXY.outX
+  resultXY.outY = resultXY.outY < 0 ? 0 : resultXY.outY
+  console.log(`Posição final: ${resultXY.outX} ${resultXY.outY}`)
   return resultXY
 }
